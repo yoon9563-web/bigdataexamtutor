@@ -2,11 +2,6 @@
 // 사용자가 설정 창에서 바꾼 값은 브라우저(localStorage)에 저장되어 이 기본값보다 우선합니다.
 export const DEFAULT_SETTINGS = {
   apiKey: '',
-  // Cloudflare Worker 같은 프록시를 쓰면 주소를 넣으세요 (proxy/README.md 참고).
-  // 값이 있으면 API 키 없이 프록시로 호출합니다.
-  apiBaseURL: '',
-  // 프록시에 ACCESS_CODE를 걸었다면 사용자가 입력하는 접속 코드 (x-access-code 헤더로 전송)
-  accessCode: '',
   model: 'claude-opus-5-5',
   effort: 'medium',
   // 응답이 안전 분류기에 거절되면 서버가 다른 모델로 자동 재시도합니다.
@@ -24,7 +19,7 @@ const KEY = 'bdt.settings';
 export function loadSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) || '{}');
-    return { ...DEFAULT_SETTINGS, ...saved };
+    return Object.fromEntries(Object.entries(DEFAULT_SETTINGS).map(([key, value]) => [key, saved?.[key] ?? value]));
   } catch {
     return { ...DEFAULT_SETTINGS };
   }

@@ -25,6 +25,7 @@ let settings = loadSettings();
 let system = '';
 let currentId = null;
 let busy = false;
+let pendingLesson = '';
 
 const py = new PythonRunner(() => settings.pyodideIndexURL, (kind, text) => {
   const s = $('#pyStatus');
@@ -123,6 +124,10 @@ function renderHistory(messages) {
 function showWelcome() {
   const node = $('#welcomeTpl').content.cloneNode(true);
   const resume = node.querySelector('#welcomeResume');
+  node.querySelector('#practiceStart').addEventListener('click', openPythonPractice);
+  const connect = node.querySelector('#connectAI');
+  connect.addEventListener('click', openSettings);
+  connect.hidden = hasConnection();
   if (currentId) {
     resume.textContent = '';
     resume.append(el('button', { class: 'starter', 'data-say': `내 학습 ID는 ${currentId}이야. 지난 수업 이어서 해줘.` }, `학습 ID ${currentId}로 지난 수업 이어서 하기`));
@@ -143,7 +148,12 @@ function setBusy(b) {
 async function send(text) {
   text = text.trim();
   if (!text || busy) return;
-  if (!settings.apiKey && !settings.apiBaseURL) { openSettings(); return; }
+  if (!hasConnection()) {
+    pendingLesson = text;
+    $('#input').value = text;
+    openSettings();
+    return;
+  }
   msgs.querySelector('.welcome')?.remove();
   addUserBubble(text);
   setBusy(true);
@@ -227,26 +237,33 @@ function showOutput(res, label) {
   if (!res.out.length && res.value == null && !res.error) out.append(el('span', { class: 'muted' }, '(출력 없음)'));
 }
 
-async function runEditor() {
-  $('#runBtn').disabled = true;
+async function runEditor(code = editor.value) {
+  const runButton = $('#runBtn');
+  if (runButton.disabled) return;
+  runButton.disabled = true;
   try {
-    const res = await py.run(editor.value, 'learner');
+    const res = await py.run(code, 'learner');
     showOutput(res);
     return res;
   } finally { $('#runBtn').disabled = false; }
 }
-$('#runBtn').addEventListener('click', runEditor);
+$('#runBtn').addEventListener('click', () => runEditor());
 $('#clearOut').addEventListener('click', () => { $('#output').innerHTML = ''; });
 $('#submitBtn').addEventListener('click', async () => {
   if (busy) return;
   const code = editor.value;
-  const res = await runEditor();
+  const res = await runEditor(code);
+  if (!res || res.runtimeError) return;
   const out = formatRun(res, 6000);
   send(`[코드 제출]\n\`\`\`python\n${code}\n\`\`\`\n\n실행 출력:\n\`\`\`\n${out}\n\`\`\``);
 });
 $('#fileInput').addEventListener('change', async (e) => {
   for (const f of e.target.files) {
-    await py.writeFile(f.name, await f.arrayBuffer());
+    const result = await py.writeFile(f.name, await f.arrayBuffer());
+    if (!result.ok) {
+      $('#output').append(el('div', { class: 'stderr' }, result.error));
+      continue;
+    }
     $('#output').append(el('div', { class: 'muted' }, `파일 올림: /home/pyodide/${f.name}`));
   }
   e.target.value = '';
@@ -258,6 +275,14 @@ function showTab(name) {
   document.querySelectorAll('.panel').forEach((p) => { p.hidden = p.id !== `panel-${name}`; });
 }
 document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
+function openPythonPractice() {
+  showTab('code');
+  $('.side').scrollIntoView({ block: 'start' });
+}
+$('#jumpToCode').addEventListener('click', openPythonPractice);
+$('#jumpToChat').addEventListener('click', () => {
+  $('#composer').scrollIntoView({ block: 'nearest' });
+});
 
 // ---------- 진도 ----------
 async function renderProgress() {
@@ -391,28 +416,61 @@ $('#newChatBtn').addEventListener('click', async () => {
 
 // ---------- 설정 ----------
 const dlg = $('#settingsDlg');
+function hasConnection() {
+  return Boolean(settings.apiKey);
+}
+
 function openSettings() {
-  const f = $('#settingsForm');
-  for (const [k, v] of Object.entries(settings)) {
-    const inp = f.elements[k];
-    if (!inp) continue;
-    if (inp.type === 'checkbox') inp.checked = !!v; else inp.value = v ?? '';
+  const form = $('#settingsForm');
+  for (const [key, value] of Object.entries(settings)) {
+    const input = form.elements[key];
+    if (!input) continue;
+    if (input.type === 'checkbox') input.checked = Boolean(value);
+    else input.value = value ?? '';
   }
+  $('#connectionError').textContent = '';
+  dlg.returnValue = '';
   dlg.showModal();
 }
+
 $('#settingsBtn').addEventListener('click', openSettings);
-dlg.addEventListener('close', () => {
-  if (dlg.returnValue !== 'save') return;
-  const f = $('#settingsForm');
+$('#disconnectBtn').addEventListener('click', () => {
+  settings = { ...settings, apiKey: '' };
+  const saved = saveSettings(settings);
+  const connect = $('#connectAI');
+  if (connect) connect.hidden = false;
+  dlg.close('cancel');
+  addNotice(saved ? '저장된 연결 정보를 지웠어요.' : '현재 탭에서 연결을 지웠어요. 브라우저 저장소의 정보는 지우지 못했어요.', !saved);
+});
+$('#settingsForm').addEventListener('submit', (event) => {
+  if (event.submitter?.value !== 'save') return;
+  const form = event.currentTarget;
   const next = { ...settings };
-  for (const k of Object.keys(settings)) {
-    const inp = f.elements[k];
-    if (!inp) continue;
-    next[k] = inp.type === 'checkbox' ? inp.checked : inp.value.trim();
+  for (const key of Object.keys(settings)) {
+    const input = form.elements[key];
+    if (!input) continue;
+    next[key] = input.type === 'checkbox' ? input.checked : input.value.trim();
   }
+  if (!next.apiKey) {
+    event.preventDefault();
+    $('#connectionError').textContent = 'Anthropic API 키를 입력해 주세요.';
+    return;
+  }
+
   if (next.pyodideIndexURL && !next.pyodideIndexURL.endsWith('/')) next.pyodideIndexURL += '/';
   settings = next;
-  if (!saveSettings(settings)) addNotice('이 브라우저는 설정을 저장하지 못해요(사생활 보호 모드 등). 이번 방문에만 적용됩니다.', true);
+  if (!saveSettings(settings)) addNotice('설정을 저장할 수 없어 이번 방문에만 적용됩니다.', true);
+});
+dlg.addEventListener('close', () => {
+  const lesson = pendingLesson;
+  pendingLesson = '';
+  if (dlg.returnValue !== 'save') return;
+  const connect = $('#connectAI');
+  if (connect) connect.hidden = hasConnection();
+  if (lesson && hasConnection()) {
+    $('#input').value = '';
+    void send(lesson);
+  }
 });
 
 // ---------- 백업 ----------
@@ -428,11 +486,17 @@ $('#exportStateBtn').addEventListener('click', async () => {
 $('#importInput').addEventListener('change', async (e) => {
   const f = e.target.files[0];
   e.target.value = '';
-  if (!f) return;
+  if (!f || busy) return;
   try {
     const data = JSON.parse(await f.text());
-    const overwrite = confirm('같은 학습 ID의 기록이 이미 있으면 덮어쓸까요?\n[확인] 덮어쓰기 · [취소] 기존 기록 유지');
-    const r = await store.importAll(data, { overwrite });
+    const dialog = $('#importChoiceDlg');
+    dialog.returnValue = 'cancel';
+    const choice = await new Promise((resolve) => {
+      dialog.addEventListener('close', () => resolve(dialog.returnValue), { once: true });
+      dialog.showModal();
+    });
+    if (choice === 'cancel' || busy) return;
+    const r = await store.importAll(data, { overwrite: choice === 'overwrite' });
     await refreshLearners();
     alert(`가져오기 완료: ${r.written}개 항목 저장, ${r.skipped}개 건너뜀`);
     await loadChatFor(currentId);
@@ -461,5 +525,5 @@ $('#importInput').addEventListener('change', async (e) => {
   await loadChatFor(currentId);
   renderProgress();
   renderNotes();
-  if (!settings.apiKey && !settings.apiBaseURL) addNotice('처음이면 오른쪽 위 “설정”에서 Anthropic API 키를 입력하세요.');
+
 })();

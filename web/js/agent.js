@@ -67,12 +67,10 @@ export class Tutor {
 
   client() {
     const s = this.settings();
-    if (!s.apiKey && !s.apiBaseURL) throw new Error('NO_KEY');
+    if (!s.apiKey) throw new Error('NO_KEY');
     return new Anthropic({
-      apiKey: s.apiKey || 'via-proxy',
-      baseURL: s.apiBaseURL || undefined,
+      apiKey: s.apiKey,
       dangerouslyAllowBrowser: true,
-      defaultHeaders: s.apiBaseURL && s.accessCode ? { 'x-access-code': s.accessCode } : undefined,
       maxRetries: 2,
     });
   }
@@ -220,7 +218,7 @@ export class Tutor {
 }
 
 export function explainError(err) {
-  if (err?.message === 'NO_KEY') return '설정에서 Anthropic API 키(또는 프록시 주소)를 먼저 입력해 주세요.';
+  if (err?.message === 'NO_KEY') return '설정에서 내 Anthropic API 키를 먼저 입력해 주세요.';
   if (err instanceof Anthropic.APIUserAbortError || err?.name === 'AbortError') return '응답을 중지했어요.';
   if (err instanceof Anthropic.AuthenticationError) return 'API 키가 올바르지 않아요. 설정에서 키를 확인해 주세요.';
   if (err instanceof Anthropic.PermissionDeniedError) return '이 키로는 해당 모델을 쓸 권한이 없어요. 설정에서 모델이나 키를 확인해 주세요.';
@@ -228,6 +226,6 @@ export function explainError(err) {
   if (err instanceof Anthropic.RateLimitError) return '요청이 너무 많아요. 잠시 후 다시 보내 주세요.';
   if (err instanceof Anthropic.BadRequestError) return `요청 형식 오류: ${err.message}`;
   if (err instanceof Anthropic.InternalServerError) return 'Claude 서버가 잠시 응답하지 않아요. 잠시 후 다시 시도해 주세요.';
-  if (err instanceof Anthropic.APIConnectionError) return '네트워크 연결에 실패했어요. 인터넷 연결이나 프록시 주소를 확인해 주세요.';
+  if (err instanceof Anthropic.APIConnectionError) return '네트워크 연결에 실패했어요. 인터넷 연결를 확인해 주세요.';
   return `오류: ${err?.message || err}`;
 }

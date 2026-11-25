@@ -160,3 +160,12 @@ code, pre, textarea.editor { font-family: var(--mono); }
   .grid2 { grid-template-columns: 1fr; }
   .brand .sub { display: none; }
 }
+
+#settingsForm [hidden], .mobile-jump { display: none; }
+@media (max-width: 900px) {
+  .mobile-jump { display: inline-flex; }
+  .run-shortcut { display: none; }
+  .quick { flex-wrap: wrap; }
+  .panel-head, .row-actions { flex-wrap: wrap; }
+  .mobile-jump, #runBtn, #submitBtn { min-height: 44px; }
+}
