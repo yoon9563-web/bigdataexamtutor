@@ -12,7 +12,10 @@ async function ensure(indexURL) {
     await py.loadPackage(['numpy', 'pandas']);
     pyodide = py;
     return py;
-  })();
+  })().catch((error) => {
+    loading = null;
+    throw error;
+  });
   return loading;
 }
 
