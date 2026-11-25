@@ -1,0 +1,45 @@
+# GitHub Pages 배포: web/ 사이트에 튜터 규칙 문서(CLAUDE.md, tutor/*.md 등)를 묶어 올립니다.
+# 개인 학습 기록(learners/<학습ID>/)과 notes/는 배포본에 넣지 않습니다.
+name: Deploy tutor site
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble site
+        run: |
+          mkdir -p _site/knowledge/tutor _site/knowledge/learners
+          cp -r web/. _site/
+          cp CLAUDE.md README.md _site/knowledge/
+          cp tutor/*.md _site/knowledge/tutor/
+          cp learners/README.md learners/state.template.json _site/knowledge/learners/
+          touch _site/.nojekyll
+          ls -R _site | head -50
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
