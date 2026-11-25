@@ -13,7 +13,11 @@ export class PythonRunner {
   }
 
   _spawn() {
-    this.worker = new Worker(new URL('./py-worker.js', import.meta.url), { type: 'module' });
+    // 단일 HTML 버전은 작업자 코드를 페이지 안에 담아 Blob으로 실행 (file://에서도 동작)
+    const src = globalThis.__BDT_WORKER_SRC__;
+    this.worker = src
+      ? new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })), { type: 'module' })
+      : new Worker(new URL('./py-worker.js', import.meta.url), { type: 'module' });
     this.worker.onmessage = (e) => {
       const p = this.pending.get(e.data.id);
       if (p) { this.pending.delete(e.data.id); clearTimeout(p.timer); p.resolve(e.data); }

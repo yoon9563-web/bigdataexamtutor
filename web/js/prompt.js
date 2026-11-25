@@ -20,6 +20,13 @@ async function fetchText(url) {
 }
 
 export async function loadKnowledge() {
+  // 단일 HTML 버전: 문서가 페이지 안에 들어 있음
+  const inlined = globalThis.__BDT_KNOWLEDGE__;
+  if (inlined) {
+    const files = KNOWLEDGE_FILES.map((p) => ({ path: p, text: inlined[p] ?? null }));
+    const template = inlined['learners/state.template.json'];
+    return { base: 'inline', files, template: template ? JSON.parse(template) : null };
+  }
   let base = null;
   for (const b of ['./knowledge/', '../']) {
     try { await fetchText(`${b}CLAUDE.md`); base = b; break; } catch { /* 다음 후보 */ }
